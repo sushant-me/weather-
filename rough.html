@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>BattleBros Robot</title>
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <style>
+      body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background: #f0f0f0;
+        font-family: Arial, sans-serif;
+        overflow: hidden;
+        touch-action: none;
+      }
+      .health-bar-container {
+        position: absolute;
+        top: 20px;
+        width: 80%;
+        max-width: 300px;
+        height: 30px;
+        background: #ccc;
+        border-radius: 5px;
+        overflow: hidden;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      .health-bar {
+        height: 100%;
+        background: #4caf50;
+        width: 100%;
+        transition: width 0.3s, background 0.3s;
+      }
+      .health-bar.low {
+        background: #ff9800;
+      }
+      .health-bar.critical {
+        background: #f44336;
+      }
+      .game-over {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 36px;
+        color: #f44336;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+      }
+      .joystick-container {
+        position: absolute;
+        bottom: 20px;
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+      .joystick {
+        width: 120px;
+        height: 120px;
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 50%;
+        position: relative;
+        touch-action: none;
+      }
+      #moveJoy {
+        background: rgba(0, 0, 255, 0.3);
+      }
+      #gunJoy {
+        background: rgba(0, 255, 0, 0.3);
+      }
+      .stick {
+        width: 60px;
+        height: 60px;
+        background: #333;
+        border-radius: 50%;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+      .fire-btn {
+        position: absolute;
+        bottom: 50%;
+        left: 50%;
+        transform: translate(-50%, 50%);
+        width: 100px;
+        height: 50px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        touch-action: manipulation;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="health-bar-container">
+      <div class="health-bar" id="healthBar"></div>
+    </div>
+    <div class="game-over" id="gameOver">Game Over</div>
+    <button class="fire-btn" ontouchstart="sendCommand('X')">FIRE</button>
+    <div class="joystick-container">
+      <div id="moveJoy" class="joystick">
+        <div class="stick" id="moveStick"></div>
+      </div>
+      <div id="gunJoy" class="joystick">
+        <div class="stick" id="gunStick"></div>
+      </div>
+    </div>
+
+    <script>
+      let lastMove = "S";
+      let lastGun = "S";
+      let health = 100;
+
+      function updateHealth(hp) {
+        health = hp;
+        const healthBar = document.getElementById("healthBar");
+        const gameOver = document.getElementById("gameOver");
+        healthBar.style.width = health + "%";
+        healthBar.className = "health-bar";
+        if (health <= 30) healthBar.classList.add("critical");
+        else if (health <= 60) healthBar.classList.add("low");
+        if (health <= 0) gameOver.style.display = "block";
+      }
+
+      function pollHealth() {
+        fetch("/health")
+          .then((response) => response.text())
+          .then((hp) => updateHealth(parseInt(hp)))
+          .catch((err) => console.log(err));
+      }
+      setInterval(pollHealth, 500);
+      pollHealth();
+
+      function sendCommand(cmd) {
+        fetch("/?State=" + cmd).catch((err) => console.log(err));
+      }
+
+      function createJoystick(elementId, stickId, isMove) {
+        const joystick = document.getElementById(elementId);
+        const stick = document.getElementById(stickId);
+        let startX,
+          startY,
+          active = false;
+
+        function moveStick(x, y) {
+          const rect = joystick.getBoundingClientRect();
+          const centerX = rect.width / 2;
+          const centerY = rect.height / 2;
+          const maxDist = centerX * 0.8;
+          let dx = x - centerX;
+          let dy = y - centerY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > maxDist) {
+            const scale = maxDist / dist;
+            dx *= scale;
+            dy *= scale;
+          }
+          stick.style.transform = `translate(${dx - stick.offsetWidth / 2}px, ${
+            dy - stick.offsetHeight / 2
+          }px)`;
+
+          let cmd = "S";
+          if (Math.abs(dx) > maxDist * 0.3 || Math.abs(dy) > maxDist * 0.3) {
+            if (isMove) {
+              if (Math.abs(dy) > Math.abs(dx)) {
+                cmd = dy < 0 ? "F" : "B";
+              } else {
+                cmd = dx < 0 ? "L" : "R";
+              }
+            } else {
+              cmd = dx < 0 ? "A" : "D";
+            }
+          }
+          if (isMove && cmd !== lastMove) {
+            sendCommand(cmd);
+            lastMove = cmd;
+          } else if (!isMove && cmd !== lastGun) {
+            sendCommand(cmd);
+            lastGun = cmd;
+          }
+        }
+
+        joystick.addEventListener("touchstart", (e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          startX = touch.clientX - joystick.offsetLeft;
+          startY = touch.clientY - joystick.offsetTop;
+          active = true;
+          moveStick(startX, startY);
+        });
+
+        joystick.addEventListener("touchmove", (e) => {
+          e.preventDefault();
+          if (active) {
+            const touch = e.touches[0];
+            const x = touch.clientX - joystick.offsetLeft;
+            const y = touch.clientY - joystick.offsetTop;
+            moveStick(x, y);
+          }
+        });
+
+        joystick.addEventListener("touchend", () => {
+          active = false;
+          stick.style.transform = "translate(-50%, -50%)";
+          const cmd = "S";
+          if (isMove && lastMove !== cmd) {
+            sendCommand(cmd);
+            lastMove = cmd;
+          } else if (!isMove && lastGun !== cmd) {
+            sendCommand(cmd);
+            lastGun = cmd;
+          }
+        });
+      }
+
+      createJoystick("moveJoy", "moveStick", true);
+      createJoystick("gunJoy", "gunStick", false);
+    </script>
+  </body>
+</html>
