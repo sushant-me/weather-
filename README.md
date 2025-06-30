@@ -97,6 +97,7 @@ How to Use
 Enter a city name in the search box
 
 Click the search button or press Enter
+copyright:sushant Poudel
 
 View current weather information
 
